@@ -1,0 +1,36 @@
+MIT License
+
+Copyright (c) 2024 SSH Honeypot Project
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+IMPORTANT NOTICE:
+
+This software is intended for educational and research purposes only. Users are
+solely responsible for ensuring compliance with all applicable laws and
+regulations in their jurisdiction. The authors and contributors assume no
+liability for misuse or illegal use of this software.
+
+By using this software, you agree to:
+1. Only deploy on systems you own or have explicit authorization to monitor
+2. Comply with all local laws regarding data collection and privacy
+3. Not use this software for entrapment or to incite illegal activity
+4. Take full responsibility for any consequences arising from its use
