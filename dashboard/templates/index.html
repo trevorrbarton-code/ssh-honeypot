@@ -1,0 +1,1113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SSH Honeypot Dashboard</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- Leaflet CSS for maps -->
+    <link href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-dark: #1a1a2e;
+            --bg-card: #16213e;
+            --accent: #0f3460;
+            --highlight: #e94560;
+            --text: #eaeaea;
+            --text-muted: #a0a0a0;
+        }
+        
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .navbar {
+            background-color: var(--bg-card) !important;
+            border-bottom: 2px solid var(--accent);
+        }
+        
+        .card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--accent);
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+        
+        .card-header {
+            background-color: var(--accent);
+            border-bottom: 1px solid var(--highlight);
+            font-weight: 600;
+        }
+        
+        .stat-card {
+            text-align: center;
+            padding: 1.5rem;
+        }
+        
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: var(--highlight);
+        }
+        
+        .stat-label {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            text-transform: uppercase;
+        }
+        
+        .stat-icon {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+            color: var(--highlight);
+        }
+        
+        .table {
+            color: var(--text);
+        }
+        
+        .table thead th {
+            background-color: var(--accent);
+            border-color: var(--highlight);
+        }
+        
+        .table tbody tr:hover {
+            background-color: rgba(233, 69, 96, 0.1);
+        }
+        
+        .badge-human {
+            background-color: #28a745;
+        }
+        
+        .badge-bot {
+            background-color: #dc3545;
+        }
+        
+        .badge-unknown {
+            background-color: #6c757d;
+        }
+        
+        .progress {
+            background-color: var(--bg-dark);
+            height: 25px;
+        }
+        
+        .progress-bar {
+            font-weight: bold;
+        }
+        
+        #attackMap {
+            height: 400px;
+            border-radius: 10px;
+        }
+        
+        .connection-status {
+            position: fixed;
+            top: 70px;
+            right: 20px;
+            z-index: 1000;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+        }
+        
+        .status-connected {
+            background-color: #28a745;
+        }
+        
+        .status-disconnected {
+            background-color: #dc3545;
+        }
+        
+        .log-entry {
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            padding: 0.25rem 0;
+            border-bottom: 1px solid var(--accent);
+        }
+        
+        .severity-critical { color: #dc3545; font-weight: bold; }
+        .severity-high { color: #fd7e14; }
+        .severity-medium { color: #ffc107; }
+        .severity-low { color: #6c757d; }
+        
+        .nav-tabs {
+            border-bottom: 1px solid var(--accent);
+        }
+        
+        .nav-tabs .nav-link {
+            color: var(--text-muted);
+            border: none;
+        }
+        
+        .nav-tabs .nav-link.active {
+            background-color: var(--accent);
+            color: var(--text);
+            border-radius: 5px 5px 0 0;
+        }
+        
+        .tab-content {
+            padding-top: 1rem;
+        }
+        
+        .feature-importance-bar {
+            height: 20px;
+            background-color: var(--accent);
+            border-radius: 3px;
+            margin-bottom: 5px;
+            position: relative;
+        }
+        
+        .feature-importance-fill {
+            height: 100%;
+            background-color: var(--highlight);
+            border-radius: 3px;
+            transition: width 0.3s ease;
+        }
+        
+        .confidence-high { color: #28a745; }
+        .confidence-medium { color: #ffc107; }
+        .confidence-low { color: #dc3545; }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-shield-alt me-2"></i>
+                SSH Honeypot Dashboard
+            </a>
+            <div class="d-flex align-items-center">
+                <span class="badge bg-secondary me-2" id="updateTime">Last updated: Never</span>
+                <button class="btn btn-outline-light btn-sm" onclick="refreshData()">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Connection Status -->
+    <div class="connection-status status-disconnected" id="connectionStatus">
+        <i class="fas fa-circle me-1"></i> Disconnected
+    </div>
+    
+    <div class="container-fluid mt-4">
+        <!-- Statistics Cards -->
+        <div class="row mb-4">
+            <div class="col-md-2">
+                <div class="card stat-card">
+                    <i class="fas fa-users stat-icon"></i>
+                    <div class="stat-value" id="totalSessions">0</div>
+                    <div class="stat-label">Total Sessions (24h)</div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="card stat-card">
+                    <i class="fas fa-network-wired stat-icon"></i>
+                    <div class="stat-value" id="uniqueIPs">0</div>
+                    <div class="stat-label">Unique IPs</div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="card stat-card">
+                    <i class="fas fa-terminal stat-icon"></i>
+                    <div class="stat-value" id="totalCommands">0</div>
+                    <div class="stat-label">Commands Executed</div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="card stat-card">
+                    <i class="fas fa-exclamation-triangle stat-icon"></i>
+                    <div class="stat-value" id="suspiciousCmds">0</div>
+                    <div class="stat-label">Suspicious Commands</div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="card stat-card">
+                    <i class="fas fa-user stat-icon"></i>
+                    <div class="stat-value" id="humanCount">0</div>
+                    <div class="stat-label">Human Attackers</div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="card stat-card">
+                    <i class="fas fa-robot stat-icon"></i>
+                    <div class="stat-value" id="botCount">0</div>
+                    <div class="stat-label">Bot Attacks</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Main Content Tabs -->
+        <div class="card">
+            <div class="card-header">
+                <ul class="nav nav-tabs card-header-tabs" id="mainTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" type="button" role="tab">
+                            <i class="fas fa-chart-line me-1"></i> Overview
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="map-tab" data-bs-toggle="tab" data-bs-target="#map" type="button" role="tab">
+                            <i class="fas fa-globe me-1"></i> Attack Map
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="commands-tab" data-bs-toggle="tab" data-bs-target="#commands" type="button" role="tab">
+                            <i class="fas fa-terminal me-1"></i> Commands
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="classification-tab" data-bs-toggle="tab" data-bs-target="#classification" type="button" role="tab">
+                            <i class="fas fa-brain me-1"></i> Human vs Bot
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="sessions-tab" data-bs-toggle="tab" data-bs-target="#sessions" type="button" role="tab">
+                            <i class="fas fa-list me-1"></i> Sessions
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="ttps-tab" data-bs-toggle="tab" data-bs-target="#ttps" type="button" role="tab">
+                            <i class="fas fa-fingerprint me-1"></i> TTPs
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="ml-tab" data-bs-toggle="tab" data-bs-target="#ml" type="button" role="tab">
+                            <i class="fas fa-cogs me-1"></i> ML Model
+                        </button>
+                    </li>
+                </ul>
+            </div>
+            <div class="card-body">
+                <div class="tab-content" id="mainTabContent">
+                    <!-- Overview Tab -->
+                    <div class="tab-pane fade show active" id="overview" role="tabpanel">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h5>Attack Distribution</h5>
+                                <canvas id="attackChart" height="200"></canvas>
+                            </div>
+                            <div class="col-md-6">
+                                <h5>Top Countries</h5>
+                                <canvas id="countryChart" height="200"></canvas>
+                            </div>
+                        </div>
+                        <div class="row mt-4">
+                            <div class="col-md-12">
+                                <h5>Recent Activity</h5>
+                                <div id="recentActivity" style="max-height: 300px; overflow-y: auto;">
+                                    <!-- Dynamic content -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Attack Map Tab -->
+                    <div class="tab-pane fade" id="map" role="tabpanel">
+                        <div id="attackMap"></div>
+                        <div class="mt-3">
+                            <h6>Attack Origins Summary</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm" id="geoTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Country</th>
+                                            <th>City</th>
+                                            <th>IP Address</th>
+                                            <th>Attack Count</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Commands Tab -->
+                    <div class="tab-pane fade" id="commands" role="tabpanel">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <h5>Command Frequency</h5>
+                                <canvas id="commandChart" height="300"></canvas>
+                            </div>
+                            <div class="col-md-4">
+                                <h5>Command Categories</h5>
+                                <canvas id="categoryChart" height="300"></canvas>
+                            </div>
+                        </div>
+                        <div class="row mt-4">
+                            <div class="col-md-12">
+                                <h5>Most Common Commands</h5>
+                                <div class="table-responsive">
+                                    <table class="table table-sm" id="commandsTable">
+                                        <thead>
+                                            <tr>
+                                                <th>Command</th>
+                                                <th>Category</th>
+                                                <th>Count</th>
+                                                <th>Frequency</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Classification Tab -->
+                    <div class="tab-pane fade" id="classification" role="tabpanel">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <h5>Human vs Bot Distribution</h5>
+                                <canvas id="classificationChart" height="250"></canvas>
+                            </div>
+                            <div class="col-md-4">
+                                <h5>Confidence Distribution</h5>
+                                <canvas id="confidenceChart" height="250"></canvas>
+                            </div>
+                            <div class="col-md-4">
+                                <h5>Classification Rate</h5>
+                                <div class="text-center mt-4">
+                                    <div class="display-1" id="classificationRate">0%</div>
+                                    <p class="text-muted">of sessions classified</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row mt-4">
+                            <div class="col-md-12">
+                                <h5>Recent Classifications</h5>
+                                <div class="table-responsive">
+                                    <table class="table table-sm" id="classificationTable">
+                                        <thead>
+                                            <tr>
+                                                <th>Session ID</th>
+                                                <th>IP Address</th>
+                                                <th>Username</th>
+                                                <th>Classification</th>
+                                                <th>Confidence</th>
+                                                <th>Commands</th>
+                                                <th>Time</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Sessions Tab -->
+                    <div class="tab-pane fade" id="sessions" role="tabpanel">
+                        <div class="table-responsive">
+                            <table class="table" id="sessionsTable">
+                                <thead>
+                                    <tr>
+                                        <th>Session ID</th>
+                                        <th>Client IP</th>
+                                        <th>Username</th>
+                                        <th>Auth Method</th>
+                                        <th>Start Time</th>
+                                        <th>Duration</th>
+                                        <th>Commands</th>
+                                        <th>Classification</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <!-- TTPs Tab -->
+                    <div class="tab-pane fade" id="ttps" role="tabpanel">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h5>Tactics Distribution</h5>
+                                <canvas id="tacticsChart" height="250"></canvas>
+                            </div>
+                            <div class="col-md-6">
+                                <h5>Techniques Timeline</h5>
+                                <div id="techniquesTimeline" style="max-height: 300px; overflow-y: auto;">
+                                    <!-- Dynamic content -->
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row mt-4">
+                            <div class="col-md-12">
+                                <h5>Common TTPs</h5>
+                                <div class="table-responsive">
+                                    <table class="table table-sm" id="ttpsTable">
+                                        <thead>
+                                            <tr>
+                                                <th>Tactic</th>
+                                                <th>Technique</th>
+                                                <th>Session Count</th>
+                                                <th>Total Occurrences</th>
+                                                <th>Severity</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- ML Model Tab -->
+                    <div class="tab-pane fade" id="ml" role="tabpanel">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h5>Model Status</h5>
+                                <div id="modelStatus">
+                                    <p><strong>Status:</strong> <span id="modelTrained">Unknown</span></p>
+                                    <p><strong>Model Type:</strong> <span id="modelType">-</span></p>
+                                    <button class="btn btn-primary" onclick="trainModel()">
+                                        <i class="fas fa-play"></i> Train Model
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <h5>Feature Importance</h5>
+                                <div id="featureImportance">
+                                    <!-- Dynamic content -->
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row mt-4">
+                            <div class="col-md-12">
+                                <h5>Classification Methodology</h5>
+                                <div class="alert alert-info">
+                                    <h6>How it works:</h6>
+                                    <p>The classifier analyzes keystroke timing patterns to distinguish between human attackers and automated bots:</p>
+                                    <ul>
+                                        <li><strong>Bots:</strong> Very consistent timing (&lt;50ms), low variance, predictable patterns</li>
+                                        <li><strong>Humans:</strong> Variable timing, higher variance, natural typing patterns with bursts and pauses</li>
+                                    </ul>
+                                    <p>Key features analyzed:</p>
+                                    <ul>
+                                        <li>Mean and standard deviation of keystroke intervals</li>
+                                        <li>Ratio of fast (&lt;50ms) vs slow keystrokes</li>
+                                        <li>Typing burst detection</li>
+                                        <li>Distribution shape (skewness, kurtosis)</li>
+                                        <li>Autocorrelation patterns</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Session Details Modal -->
+    <div class="modal fade" id="sessionModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content" style="background-color: var(--bg-card); color: var(--text);">
+                <div class="modal-header">
+                    <h5 class="modal-title">Session Details</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="sessionDetails"></div>
+                    <h6 class="mt-3">Commands Executed</h6>
+                    <div id="sessionCommands" style="max-height: 300px; overflow-y: auto;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <script>
+        // Global variables
+        let socket;
+        let attackMap;
+        let charts = {};
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            initSocket();
+            initMap();
+            loadAllData();
+        });
+        
+        // Socket.IO connection
+        function initSocket() {
+            socket = io();
+            
+            socket.on('connect', function() {
+                document.getElementById('connectionStatus').className = 'connection-status status-connected';
+                document.getElementById('connectionStatus').innerHTML = '<i class="fas fa-circle me-1"></i> Connected';
+            });
+            
+            socket.on('disconnect', function() {
+                document.getElementById('connectionStatus').className = 'connection-status status-disconnected';
+                document.getElementById('connectionStatus').innerHTML = '<i class="fas fa-circle me-1"></i> Disconnected';
+            });
+            
+            socket.on('stats_update', function(data) {
+                updateDashboard(data);
+            });
+        }
+        
+        // Initialize map
+        function initMap() {
+            attackMap = L.map('attackMap').setView([20, 0], 2);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(attackMap);
+        }
+        
+        // Load all data
+        function loadAllData() {
+            loadStats();
+            loadGeolocation();
+            loadCommandFrequency();
+            loadClassificationData();
+            loadSessions();
+            loadTTPs();
+            loadModelStatus();
+        }
+        
+        // Refresh all data
+        function refreshData() {
+            loadAllData();
+        }
+        
+        // Load statistics
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/stats?hours=24');
+                const data = await response.json();
+                
+                document.getElementById('totalSessions').textContent = data.total_sessions || 0;
+                document.getElementById('uniqueIPs').textContent = data.unique_ips || 0;
+                document.getElementById('totalCommands').textContent = data.total_commands || 0;
+                document.getElementById('suspiciousCmds').textContent = data.suspicious_commands || 0;
+                document.getElementById('humanCount').textContent = data.human_count || 0;
+                document.getElementById('botCount').textContent = data.bot_count || 0;
+                
+                updateAttackChart(data);
+                updateCountryChart(data);
+                
+                document.getElementById('updateTime').textContent = 'Last updated: ' + new Date().toLocaleTimeString();
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+        
+        // Load geolocation data
+        async function loadGeolocation() {
+            try {
+                const response = await fetch('/api/geolocation?hours=24');
+                const data = await response.json();
+                
+                // Clear existing markers
+                attackMap.eachLayer(function(layer) {
+                    if (layer instanceof L.Marker) {
+                        attackMap.removeLayer(layer);
+                    }
+                });
+                
+                // Add markers
+                const geoTableBody = document.querySelector('#geoTable tbody');
+                geoTableBody.innerHTML = '';
+                
+                data.forEach(loc => {
+                    if (loc.lat && loc.lon) {
+                        L.marker([loc.lat, loc.lon])
+                            .addTo(attackMap)
+                            .bindPopup(`<b>${loc.country}</b><br>${loc.city}<br>IP: ${loc.ip}<br>Attacks: ${loc.count}`);
+                    }
+                    
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${loc.country || 'Unknown'}</td>
+                        <td>${loc.city || 'Unknown'}</td>
+                        <td>${loc.ip}</td>
+                        <td>${loc.count}</td>
+                    `;
+                    geoTableBody.appendChild(row);
+                });
+            } catch (error) {
+                console.error('Error loading geolocation:', error);
+            }
+        }
+        
+        // Load command frequency
+        async function loadCommandFrequency() {
+            try {
+                const response = await fetch('/api/commands/frequency?hours=24&limit=30');
+                const data = await response.json();
+                
+                updateCommandChart(data);
+                updateCategoryChart(data);
+                
+                // Update commands table
+                const tableBody = document.querySelector('#commandsTable tbody');
+                tableBody.innerHTML = '';
+                
+                const totalCount = data.reduce((sum, item) => sum + item.count, 0);
+                
+                data.forEach(cmd => {
+                    const row = document.createElement('tr');
+                    const percentage = ((cmd.count / totalCount) * 100).toFixed(1);
+                    row.innerHTML = `
+                        <td><code>${escapeHtml(cmd.command)}</code></td>
+                        <td><span class="badge bg-secondary">${cmd.category}</span></td>
+                        <td>${cmd.count}</td>
+                        <td>
+                            <div class="progress">
+                                <div class="progress-bar" style="width: ${percentage}%">${percentage}%</div>
+                            </div>
+                        </td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            } catch (error) {
+                console.error('Error loading command frequency:', error);
+            }
+        }
+        
+        // Load classification data
+        async function loadClassificationData() {
+            try {
+                const response = await fetch('/api/classification/realtime');
+                const data = await response.json();
+                
+                updateClassificationChart(data.counts);
+                updateConfidenceChart(data.confidence_distribution);
+                document.getElementById('classificationRate').textContent = 
+                    data.classification_rate.toFixed(1) + '%';
+                
+                // Update classification table
+                const tableBody = document.querySelector('#classificationTable tbody');
+                tableBody.innerHTML = '';
+                
+                data.recent_classifications.forEach(cls => {
+                    const row = document.createElement('tr');
+                    const confidenceClass = cls.confidence >= 0.8 ? 'confidence-high' : 
+                                          cls.confidence >= 0.5 ? 'confidence-medium' : 'confidence-low';
+                    const badgeClass = cls.classification === 'human' ? 'badge-human' : 
+                                      cls.classification === 'bot' ? 'badge-bot' : 'badge-unknown';
+                    
+                    row.innerHTML = `
+                        <td><code>${cls.session_id}</code></td>
+                        <td>${cls.client_ip}</td>
+                        <td>${cls.username}</td>
+                        <td><span class="badge ${badgeClass}">${cls.classification}</span></td>
+                        <td class="${confidenceClass}">${(cls.confidence * 100).toFixed(1)}%</td>
+                        <td>${cls.commands_count}</td>
+                        <td>${new Date(cls.start_time).toLocaleString()}</td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            } catch (error) {
+                console.error('Error loading classification data:', error);
+            }
+        }
+        
+        // Load sessions
+        async function loadSessions() {
+            try {
+                const response = await fetch('/api/sessions?limit=50');
+                const data = await response.json();
+                
+                const tableBody = document.querySelector('#sessionsTable tbody');
+                tableBody.innerHTML = '';
+                
+                data.forEach(session => {
+                    const row = document.createElement('tr');
+                    const duration = session.duration_seconds ? 
+                        `${session.duration_seconds.toFixed(1)}s` : 'N/A';
+                    const badgeClass = session.classified_as === 'human' ? 'badge-human' : 
+                                      session.classified_as === 'bot' ? 'badge-bot' : 'badge-unknown';
+                    
+                    row.innerHTML = `
+                        <td><code>${session.session_id}</code></td>
+                        <td>${session.client_ip}</td>
+                        <td>${session.username}</td>
+                        <td>${session.auth_method}</td>
+                        <td>${new Date(session.start_time).toLocaleString()}</td>
+                        <td>${duration}</td>
+                        <td>${session.commands_count}</td>
+                        <td><span class="badge ${badgeClass}">${session.classified_as || 'unknown'}</span></td>
+                        <td>
+                            <button class="btn btn-sm btn-info" onclick="showSessionDetails('${session.session_id}')">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            } catch (error) {
+                console.error('Error loading sessions:', error);
+            }
+        }
+        
+        // Load TTPs
+        async function loadTTPs() {
+            try {
+                const response = await fetch('/api/ttps?days=7');
+                const data = await response.json();
+                
+                updateTacticsChart(data);
+                
+                // Update TTPs table
+                const tableBody = document.querySelector('#ttpsTable tbody');
+                tableBody.innerHTML = '';
+                
+                data.forEach(ttp => {
+                    const row = document.createElement('tr');
+                    const severity = getSeverityForTactic(ttp.tactic);
+                    const severityClass = `severity-${severity}`;
+                    
+                    row.innerHTML = `
+                        <td>${ttp.tactic}</td>
+                        <td>${ttp.technique || 'N/A'}</td>
+                        <td>${ttp.session_count}</td>
+                        <td>${ttp.total_occurrences}</td>
+                        <td class="${severityClass}">${severity.toUpperCase()}</td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            } catch (error) {
+                console.error('Error loading TTPs:', error);
+            }
+        }
+        
+        // Load model status
+        async function loadModelStatus() {
+            try {
+                const response = await fetch('/api/classifier/status');
+                const data = await response.json();
+                
+                document.getElementById('modelTrained').textContent = 
+                    data.is_trained ? 'Trained' : 'Not Trained';
+                document.getElementById('modelType').textContent = data.model_type || '-';
+                
+                // Update feature importance
+                const container = document.getElementById('featureImportance');
+                container.innerHTML = '';
+                
+                if (data.feature_importance) {
+                    data.feature_importance.forEach(([feature, importance]) => {
+                        const percentage = (importance * 100).toFixed(1);
+                        const div = document.createElement('div');
+                        div.innerHTML = `
+                            <small>${feature} (${percentage}%)</small>
+                            <div class="feature-importance-bar">
+                                <div class="feature-importance-fill" style="width: ${percentage}%"></div>
+                            </div>
+                        `;
+                        container.appendChild(div);
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading model status:', error);
+            }
+        }
+        
+        // Train model
+        async function trainModel() {
+            try {
+                const button = document.querySelector('#ml button');
+                button.disabled = true;
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Training...';
+                
+                const response = await fetch('/api/classifier/train', { method: 'POST' });
+                const data = await response.json();
+                
+                if (data.error) {
+                    alert('Training failed: ' + data.error);
+                } else {
+                    alert(`Training complete! Validation accuracy: ${(data.validation_accuracy * 100).toFixed(2)}%`);
+                    loadModelStatus();
+                }
+                
+                button.disabled = false;
+                button.innerHTML = '<i class="fas fa-play"></i> Train Model';
+            } catch (error) {
+                console.error('Error training model:', error);
+                alert('Training failed: ' + error.message);
+            }
+        }
+        
+        // Show session details
+        async function showSessionDetails(sessionId) {
+            try {
+                const response = await fetch(`/api/session/${sessionId}/commands`);
+                const commands = await response.json();
+                
+                document.getElementById('sessionDetails').innerHTML = `
+                    <p><strong>Session ID:</strong> <code>${sessionId}</code></p>
+                    <p><strong>Total Commands:</strong> ${commands.length}</p>
+                `;
+                
+                const commandsDiv = document.getElementById('sessionCommands');
+                commandsDiv.innerHTML = commands.map(cmd => `
+                    <div class="log-entry">
+                        <span class="text-muted">${new Date(cmd.timestamp).toLocaleTimeString()}</span>
+                        <code>${escapeHtml(cmd.command)}</code>
+                        ${cmd.suspicious ? '<span class="badge bg-danger">SUSPICIOUS</span>' : ''}
+                    </div>
+                `).join('');
+                
+                new bootstrap.Modal(document.getElementById('sessionModal')).show();
+            } catch (error) {
+                console.error('Error loading session details:', error);
+            }
+        }
+        
+        // Update dashboard with real-time data
+        function updateDashboard(data) {
+            if (data.stats) {
+                document.getElementById('totalSessions').textContent = data.stats.total_sessions || 0;
+                document.getElementById('totalCommands').textContent = data.stats.total_commands || 0;
+            }
+        }
+        
+        // Chart update functions
+        function updateAttackChart(data) {
+            const ctx = document.getElementById('attackChart').getContext('2d');
+            
+            if (charts.attack) {
+                charts.attack.destroy();
+            }
+            
+            charts.attack = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Human', 'Bot', 'Unknown'],
+                    datasets: [{
+                        data: [data.human_count, data.bot_count, 
+                               (data.total_sessions || 0) - (data.human_count + data.bot_count)],
+                        backgroundColor: ['#28a745', '#dc3545', '#6c757d']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+        }
+        
+        function updateCountryChart(data) {
+            const ctx = document.getElementById('countryChart').getContext('2d');
+            
+            if (charts.country) {
+                charts.country.destroy();
+            }
+            
+            const countries = data.top_countries || [];
+            
+            charts.country = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: countries.map(c => c[0]),
+                    datasets: [{
+                        label: 'Attacks',
+                        data: countries.map(c => c[1]),
+                        backgroundColor: '#0f3460'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+        }
+        
+        function updateCommandChart(data) {
+            const ctx = document.getElementById('commandChart').getContext('2d');
+            
+            if (charts.command) {
+                charts.command.destroy();
+            }
+            
+            charts.command = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: data.map(c => c.command.length > 20 ? c.command.substring(0, 20) + '...' : c.command),
+                    datasets: [{
+                        label: 'Frequency',
+                        data: data.map(c => c.count),
+                        backgroundColor: '#e94560'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+        }
+        
+        function updateCategoryChart(data) {
+            const ctx = document.getElementById('categoryChart').getContext('2d');
+            
+            if (charts.category) {
+                charts.category.destroy();
+            }
+            
+            // Group by category
+            const categories = {};
+            data.forEach(cmd => {
+                categories[cmd.category] = (categories[cmd.category] || 0) + cmd.count;
+            });
+            
+            charts.category = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: Object.keys(categories),
+                    datasets: [{
+                        data: Object.values(categories),
+                        backgroundColor: ['#0f3460', '#e94560', '#28a745', '#ffc107', '#dc3545', '#6f42c1']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+        }
+        
+        function updateClassificationChart(counts) {
+            const ctx = document.getElementById('classificationChart').getContext('2d');
+            
+            if (charts.classification) {
+                charts.classification.destroy();
+            }
+            
+            charts.classification = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: ['Human', 'Bot', 'Unknown'],
+                    datasets: [{
+                        data: [counts.human, counts.bot, counts.unknown],
+                        backgroundColor: ['#28a745', '#dc3545', '#6c757d']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+        }
+        
+        function updateConfidenceChart(distribution) {
+            const ctx = document.getElementById('confidenceChart').getContext('2d');
+            
+            if (charts.confidence) {
+                charts.confidence.destroy();
+            }
+            
+            charts.confidence = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['High (≥80%)', 'Medium (50-80%)', 'Low (<50%)'],
+                    datasets: [{
+                        label: 'Classifications',
+                        data: [distribution.high, distribution.medium, distribution.low],
+                        backgroundColor: ['#28a745', '#ffc107', '#dc3545']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+        }
+        
+        function updateTacticsChart(data) {
+            const ctx = document.getElementById('tacticsChart').getContext('2d');
+            
+            if (charts.tactics) {
+                charts.tactics.destroy();
+            }
+            
+            const tactics = {};
+            data.forEach(ttp => {
+                tactics[ttp.tactic] = (tactics[ttp.tactic] || 0) + ttp.session_count;
+            });
+            
+            charts.tactics = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(tactics),
+                    datasets: [{
+                        label: 'Session Count',
+                        data: Object.values(tactics),
+                        backgroundColor: '#e94560'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+        }
+        
+        // Utility functions
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function getSeverityForTactic(tactic) {
+            const severityMap = {
+                'destructive': 'critical',
+                'reverse_shell': 'high',
+                'persistence': 'high',
+                'privilege_escalation': 'high',
+                'cryptomining': 'medium',
+                'download': 'medium',
+                'reconnaissance': 'low'
+            };
+            return severityMap[tactic] || 'low';
+        }
+        
+        // Auto-refresh every 30 seconds
+        setInterval(refreshData, 30000);
+    </script>
+</body>
+</html>
